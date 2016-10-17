@@ -1,5 +1,3 @@
-package com.inkloyd;
-
 import java.io.File;
 import java.util.*;
 import java.io.*;
@@ -8,6 +6,33 @@ import star.base.report.*;
 import star.vis.*;
 
 public class StarCCMExport extends StarMacro {
+    public void SortCSV(String csvPath, String simName, String reportName){
+        try{
+            BufferedReader br = new BufferedReader(new FileReader(csvPath));
+            String line;
+            Map<String, String> map = new TreeMap<>();
+
+            while((line=br.readLine())!=null){
+                String str[] = line.split(",");
+                map.put(str[0], str[1]);
+            }
+            br.close();
+
+            // File path generator
+            String newCsvPath = simName + reportName;
+
+            BufferedWriter bw = new BufferedWriter(new FileWriter(newCsvPath));
+            for (Map.Entry<String, String> entry : map.entrySet()){
+                bw.append(entry.getKey()).append(',').append(entry.getValue()).append(System.getProperty("line.separator"));
+            }
+            bw.close();
+        } catch (Exception ex) {
+            System.out.println(ex.toString());
+        } finally {
+
+        }
+    }
+
     public void execute() {
 
         Simulation simFile = getActiveSimulation();
@@ -61,7 +86,9 @@ public class StarCCMExport extends StarMacro {
 
                 for (StarPlot thisPlot : plotCollection) {
                     simFile.println("Plot Name: " + thisPlot.getPresentationName());
-                    thisPlot.export(resolvePath(basePath + "Plots_" + thisPlot.getPresentationName().replaceAll("[^a-zA-Z0-9.-]", "_") + ".csv"), ",");
+                    String csvPath = resolvePath(basePath + "Plots_" + thisPlot.getPresentationName().replaceAll("[^a-zA-Z0-9.-]", "_") + ".csv");
+                    thisPlot.export(csvPath, ",");
+                    SortCSV(csvPath, simName, thisPlot.getPresentationName());
                 }
             }
             
