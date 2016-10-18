@@ -1,119 +1,199 @@
 import java.io.File;
 import java.util.*;
 import java.io.*;
+
 import star.common.*;
 import star.base.report.*;
 import star.vis.*;
 
-public class StarCCMExport extends StarMacro {
-    public void SortCSV(String csvPath, String simName, String reportName){
-        try{
-            BufferedReader br = new BufferedReader(new FileReader(csvPath));
+public class StarCCMExport extends StarMacro
+{
+    private static String curDir = System.getProperty( "user.dir" );
+    
+    
+    /**
+     * @param simName should be like this "case-a_1-std-lin"
+     * @param objName should be like this "_XBT_y-t"
+     * @return "../data/csv/case-a/xbt/y-t/1-std-lin.csv"
+     */
+    private String[] ParseCaseName( String simName, String objName )
+    {
+        String elemSim[] = simName.split( "_" );
+        String caseName = elemSim[0];
+        String modelName = elemSim[1];
+        
+        String elemRep[] = objName.split( "_" );
+        String locName = elemRep[1];
+        String grpName = elemRep[2];
+        
+        System.out.println( caseName + modelName + locName + grpName );
+        
+        return new String[]{ curDir + File.separatorChar
+                + "data" + File.separatorChar
+                + caseName + File.separatorChar
+                + locName + File.separatorChar
+                + grpName,
+                modelName };
+    }
+    
+    private String MakeFolders( String folderName )
+    {
+        try
+        {
+            File f = new File( folderName );
+            if( !f.isDirectory() )
+                f.mkdirs();
+            else
+                System.out.println( "Path already exists: " + f.getPath() );
+        }
+        catch ( Exception ex )
+        {
+            System.out.println( ex.toString() );
+        }
+        
+        return folderName;
+    }
+    
+    private void SortCSV( String filePath, String simName, String reportName )
+    {
+        try
+        {
+            int lineNum = 0;
+            BufferedReader br = new BufferedReader( new FileReader( filePath ) );
             String line;
-            Map<String, String> map = new TreeMap<>();
-
-            while((line=br.readLine())!=null){
-                String str[] = line.split(",");
-                map.put(str[0], str[1]);
+            Map< Double, Double > map = new TreeMap<>();
+            
+            while( ( line = br.readLine() ) != null )
+            {
+                if( lineNum != 0 )
+                {
+                    String str[] = line.split( "," );
+                    map.put( Double.parseDouble( str[0] ), Double.parseDouble( str[1] ) );
+                }
+                lineNum++;
             }
             br.close();
-
-            // File path generator
-            String newCsvPath = simName + reportName;
-
-            BufferedWriter bw = new BufferedWriter(new FileWriter(newCsvPath));
-            for (Map.Entry<String, String> entry : map.entrySet()){
-                bw.append(entry.getKey()).append(',').append(entry.getValue()).append(System.getProperty("line.separator"));
+            
+            String foldName = MakeFolders( ParseCaseName( simName, reportName )[0] ) + File.separatorChar;
+            String fileName = ParseCaseName( simName, reportName )[1] + ".csv";
+            
+            BufferedWriter bw = new BufferedWriter( new FileWriter( foldName + fileName ) );
+            for( Map.Entry< Double, Double > entry : map.entrySet() )
+            {
+                bw.append( String.format( "%.4f", entry.getKey() ) ).append( ',' ).append( String.format( "%.4f", entry.getValue() ) )
+                        .append( System.getProperty( "line.separator" ) );
             }
             bw.close();
-        } catch (Exception ex) {
-            System.out.println(ex.toString());
-        } finally {
-
+        }
+        catch ( Exception ex )
+        {
+            System.out.println( ex.toString() );
         }
     }
-
-    public void execute() {
-
+    
+    public void execute()
+    {
         Simulation simFile = getActiveSimulation();
-
-        try {
-            String simName = simFile.getPresentationName();
-            String curDir = System.getProperty("user.dir");
-            boolean exists = (new File(simName)).exists();
+        String simName = simFile.getPresentationName();
+        
+        try
+        {
+            simFile.println( "No plots in current simulation." );
+            boolean exists = ( new File( simName ) ).exists();
             boolean success;
-            if (!exists) {
-                success = (new File(simName)).mkdir();
-                if (!success) {
-                    simFile.println("Folder creation failed.");
+            if( !exists )
+            {
+                success = ( new File( simName ) ).mkdir();
+                if( !success )
+                {
+                    simFile.println( "Folder creation failed." );
                 }
             }
-
-            simFile.println("Simulation Name:" + simName);
-
-            String basePath = (curDir + File.separatorChar + simName + File.separatorChar);
-
+            
+            simFile.println( "Simulation Name:" + simName );
+            
+            String basePath = ( curDir + File.separatorChar + simName + File.separatorChar );
+            
             // Export all reports
-            Collection<Report> reportCollection = simFile.getReportManager().getObjects();
-
-            if (reportCollection.isEmpty()) {
-                simFile.println("No reports in current simulation.");
+            /*
+            Collection< Report > reportCollection = simFile.getReportManager().getObjects();
+            
+            if( reportCollection.isEmpty() )
+            {
+                simFile.println( "No reports in current simulation." );
             }
-            else {
-                simFile.println("Report directory: " + basePath);
-
-                BufferedWriter reportWriter = new BufferedWriter(new FileWriter(resolvePath(basePath + "Reports.csv")));
-                reportWriter.write("Report Name,Value,Unit,\n");
-
-                for (Report thisReport : reportCollection) {
+            else
+            {
+                simFile.println( "Report directory: " + curDir );
+                
+                BufferedWriter reportWriter = new BufferedWriter( new FileWriter( resolvePath( basePath + "Reports.csv" ) ) );
+                reportWriter.write( "Report Name,Value,Unit,\n" );
+                
+                for( Report thisReport : reportCollection )
+                {
                     String fieldLocationName = thisReport.getPresentationName();
                     Double fieldValue = thisReport.getReportMonitorValue();
                     String fieldUnits = thisReport.getUnits().toString();
-                    simFile.println("Field Location: " + fieldLocationName);
-                    reportWriter.write(fieldLocationName + "," + fieldValue + "," + fieldUnits + "\n");
+                    simFile.println( "Field Location: " + fieldLocationName );
+                    reportWriter.write( fieldLocationName + "," + fieldValue + "," + fieldUnits + "\n" );
                 }
                 reportWriter.close();
             }
-
+            */
+            
             // Export all plots
-            Collection<StarPlot> plotCollection = simFile.getPlotManager().getObjects();
-
-            if (plotCollection.isEmpty()) {
-                simFile.println("No plots in current simulation.");
-            }
-            else {
-                simFile.println("Plot directory: " + basePath);
-
-                for (StarPlot thisPlot : plotCollection) {
-                    simFile.println("Plot Name: " + thisPlot.getPresentationName());
-                    String csvPath = resolvePath(basePath + "Plots_" + thisPlot.getPresentationName().replaceAll("[^a-zA-Z0-9.-]", "_") + ".csv");
-                    thisPlot.export(csvPath, ",");
-                    SortCSV(csvPath, simName, thisPlot.getPresentationName());
+            Collection< StarPlot > plotCollection = simFile.getPlotManager().getObjects();
+            
+            if( plotCollection.isEmpty() )
+                simFile.println( "No plots in current simulation." );
+            else
+            {
+                simFile.println( "Plot directory: " + curDir );
+                
+                for( StarPlot thisPlot : plotCollection )
+                {
+                    if( !thisPlot.getPresentationName().contains( "residuals" ) )
+                    {
+                        String csvPath = resolvePath( basePath + "Plots_" + thisPlot.getPresentationName() + ".csv" );
+                        thisPlot.export( csvPath, "," );
+                        SortCSV( csvPath, simName, thisPlot.getPresentationName() );
+                        File csvOld = new File( csvPath );
+                        csvOld.delete();
+                    }
+                    
                 }
             }
             
             // Export all scenes
-            Collection<Scene> sceneCollection = simFile.getSceneManager().getScenes();
-
-            if (sceneCollection.isEmpty()) {
-                simFile.println("No scenes in current simulation.");
-            }
-            else {
-                simFile.println("Scene directory: " + basePath);
-
-                int xResolution   = 1920;
-                int yResolution   = 1080;
+            Collection< Scene > sceneCollection = simFile.getSceneManager().getScenes();
+            
+            if( sceneCollection.isEmpty() )
+                simFile.println( "No scenes in current simulation." );
+            else
+            {
+                int xResolution = 1920;
+                int yResolution = 1080;
                 int magnification = 1;
-
-                for (Scene thisScene : sceneCollection) {
-                    String curScene = thisScene.toString().replaceAll("[^a-zA-Z0-9.-]", "_");
-                    simFile.getSceneManager().getSceneByName(curScene);
-                    thisScene.printAndWait(resolvePath(basePath + "Scenes_" + curScene + ".png"), magnification, xResolution, yResolution);
+                
+                for( Scene thisScene : sceneCollection )
+                {
+                    String curScene = thisScene.toString();
+                    
+                    if( curScene.contains( "contour" ) )
+                    {
+                        String foldName = MakeFolders( ParseCaseName( simName, curScene )[0] );
+                        String fileName = ParseCaseName( simName, curScene )[1] + ".png";
+                        simFile.getSceneManager().getSceneByName( curScene );
+                        thisScene.printAndWait( resolvePath( foldName + File.separatorChar + fileName ), magnification, xResolution, yResolution );
+                    }
                 }
             }
+            File baseFolder = new File( basePath );
+            baseFolder.delete();
         }
-        catch (IOException iOException) {
-            simFile.println(iOException);
+        catch ( Exception ex )
+        {
+            System.out.println( ex.toString() );
         }
     }
 }
