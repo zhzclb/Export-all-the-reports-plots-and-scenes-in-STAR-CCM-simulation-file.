@@ -80,9 +80,52 @@ public class StarCCMExport extends StarMacro
             BufferedWriter bw = new BufferedWriter( new FileWriter( foldName + fileName ) );
             for( Map.Entry< Double, Double > entry : map.entrySet() )
             {
-                bw.append( String.format( "%.4f", entry.getKey() ) ).append( "," )
-                  .append( String.format( "%.4f", entry.getValue() ) )
-                  .append( System.getProperty( "line.separator" ) );
+                bw.append( String.format( "%.8f", entry.getKey() ) ).append( "," )
+                        .append( String.format( "%.8f", entry.getValue() ) )
+                        .append( System.getProperty( "line.separator" ) );
+            }
+            bw.close();
+        }
+        catch ( Exception ex )
+        {
+            System.out.println( ex.toString() );
+        }
+    }
+    
+    private void SortWireCSV( String paths[], String simName, String reportName )
+    {
+        Map< Double, Double > map = new TreeMap<>();
+        
+        try
+        {
+            for( String path : paths )
+            {
+                BufferedReader br = new BufferedReader( new FileReader( path ) );
+                String line;
+                int lineNum = 0;
+                while( ( line = br.readLine() ) != null )
+                {
+                    if( lineNum != 0 )
+                    {
+                        String str[] = line.split( "," );
+                        Double angle = Double.parseDouble( str[0] );
+                        Double value = Double.parseDouble( str[1] );
+                        map.put( angle, value );
+                    }
+                    lineNum++;
+                }
+                br.close();
+            }
+            
+            String foldName = MakeFolders( ParseCaseName( simName, reportName )[0] ) + File.separatorChar;
+            String fileName = ParseCaseName( simName, reportName )[1] + ".csv";
+            
+            BufferedWriter bw = new BufferedWriter( new FileWriter( foldName + fileName ) );
+            for( Map.Entry< Double, Double > entry : map.entrySet() )
+            {
+                bw.append( String.format( "%.8f", entry.getKey() ) ).append( "," )
+                        .append( String.format( "%.8f", entry.getValue() ) )
+                        .append( System.getProperty( "line.separator" ) );
             }
             bw.close();
         }
@@ -114,6 +157,7 @@ public class StarCCMExport extends StarMacro
             String basePath = ( curDir + File.separatorChar + simName + File.separatorChar );
             
             // Export all reports
+            /*
             Collection< Report > reportCollection = simFile.getReportManager().getObjects();
             if( !reportCollection.isEmpty() )
             {
@@ -125,27 +169,52 @@ public class StarCCMExport extends StarMacro
                     Double fieldValue = thisReport.getReportMonitorValue();
                     String fieldUnits = thisReport.getUnits().toString();
                     reportFile.append( fieldNames ).append( "," )
-                              .append( fieldValue.toString() ).append( "," )
-                              .append( fieldUnits ).append( System.getProperty( "line.separator" ) );
+                            .append( fieldValue.toString() ).append( "," )
+                            .append( fieldUnits ).append( System.getProperty( "line.separator" ) );
                 }
                 reportFile.close();
             }
-            
+            */
             // Export all plots
+            Set< String > properties = new HashSet<>();
+            
             Collection< StarPlot > plotCollection = simFile.getPlotManager().getObjects();
             if( !plotCollection.isEmpty() )
             {
                 for( StarPlot thisPlot : plotCollection )
                 {
                     String plotName = thisPlot.getPresentationName();
-                    if( !plotName.contains( "residuals" ) )
+                    if( !plotName.contains( "residuals" ) && !plotName.contains( "wire" ) )
                     {
                         String csvPath = resolvePath( basePath + plotName + ".csv" );
                         thisPlot.export( csvPath, "," );
                         SortCSV( csvPath, simName, plotName );
                         new File( csvPath ).delete();
                     }
+                    else
+                    {
+                        if( plotName.contains( "wire" ) )
+                        {
+                            String prop[] = plotName.split( "_" );
+                            properties.add( prop[2] );
+                            String csvPath = resolvePath( basePath + plotName + ".csv" );
+                            thisPlot.export( csvPath, "," );
+                        }
+                    }
                 }
+            }
+            
+            for( String names : properties )
+            {
+                String paths[] = {
+                        resolvePath( basePath + "_wire-inlet_" + names + ".csv" ),
+                        resolvePath( basePath + "_wire-outlet_" + names + ".csv" )
+                };
+                
+                String pName = "_wire_" + names;
+                SortWireCSV( paths, simName, pName );
+                new File( paths[0] ).delete();
+                new File( paths[1] ).delete();
             }
             
             // Export all scenes
@@ -155,11 +224,11 @@ public class StarCCMExport extends StarMacro
                 int xResolution = 1920;
                 int yResolution = 1080;
                 int magnification = 1;
-    
+                
                 for( Scene thisScene : sceneCollection )
                 {
                     String curScene = thisScene.toString();
-        
+                    
                     if( curScene.contains( "contour" ) )
                     {
                         String foldName = MakeFolders( ParseCaseName( simName, curScene )[0] );
