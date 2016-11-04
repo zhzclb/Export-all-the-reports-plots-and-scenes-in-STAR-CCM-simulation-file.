@@ -1,21 +1,38 @@
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.io.File;
 import java.util.*;
-import java.io.*;
+import javax.imageio.ImageIO;
 
 import star.common.*;
 import star.base.report.*;
 import star.vis.*;
 
+import static java.lang.Double.parseDouble;
+
 public class StarCCMExport extends StarMacro
 {
     private static String curDir = System.getProperty( "user.dir" );
     
+    private String[] ParseCaseName( String simName )
+    {
+        String elemSim[] = simName.split( "_" );
+        String caseName = elemSim[0];
+        String modelName = elemSim[1];
     
-    /**
-     * @param simName should be like this "case-a_1-std-lin"
-     * @param objName should be like this "_XBT_y-t"
-     * @return "../data/csv/case-a/xbt/y-t/1-std-lin.csv"
-     */
+        System.out.println( caseName + modelName );
+    
+        MakeFolders(curDir + File.separatorChar
+                + "data" + File.separatorChar
+                + "reports");
+        
+        return new String[]{ curDir + File.separatorChar
+                + "data" + File.separatorChar
+                + "reports",
+                modelName };
+    }
+    
     private String[] ParseCaseName( String simName, String objName )
     {
         String elemSim[] = simName.split( "_" );
@@ -68,7 +85,7 @@ public class StarCCMExport extends StarMacro
                 if( lineNum != 0 )
                 {
                     String str[] = line.split( "," );
-                    map.put( Double.parseDouble( str[0] ), Double.parseDouble( str[1] ) );
+                    map.put( parseDouble( str[0] ), parseDouble( str[1] ) );
                 }
                 lineNum++;
             }
@@ -94,7 +111,7 @@ public class StarCCMExport extends StarMacro
     
     private void SortWireCSV( String paths[], String simName, String reportName )
     {
-        Map< Double, Double > map = new TreeMap<>();
+        TreeMap< Double, Double > map = new TreeMap<>();
         
         try
         {
@@ -108,9 +125,12 @@ public class StarCCMExport extends StarMacro
                     if( lineNum != 0 )
                     {
                         String str[] = line.split( "," );
-                        Double angle = Double.parseDouble( str[0] );
-                        Double value = Double.parseDouble( str[1] );
-                        map.put( angle, value );
+                        if( !Objects.equals( str[0], "239.48811438446003" ) )
+                        {
+                            Double angle = parseDouble( str[0] );
+                            Double value = parseDouble( str[1] );
+                            map.put( angle, value );
+                        }
                     }
                     lineNum++;
                 }
@@ -123,10 +143,20 @@ public class StarCCMExport extends StarMacro
             BufferedWriter bw = new BufferedWriter( new FileWriter( foldName + fileName ) );
             for( Map.Entry< Double, Double > entry : map.entrySet() )
             {
-                bw.append( String.format( "%.8f", entry.getKey() ) ).append( "," )
-                        .append( String.format( "%.8f", entry.getValue() ) )
-                        .append( System.getProperty( "line.separator" ) );
+                Double key = entry.getKey();
+                double value = entry.getValue();
+                
+                if( key < 250 || key > 290 )
+                {
+                    bw.append( String.format( "%.8f", key ) ).append( "," )
+                            .append( String.format( "%.8f", value ) )
+                            .append( System.getProperty( "line.separator" ) );
+                }
             }
+            // Add first key value pair
+            bw.append( String.format( "%.8f", map.firstEntry().getKey() ) ).append( "," )
+                    .append( String.format( "%.8f", map.firstEntry().getValue() ) )
+                    .append( System.getProperty( "line.separator" ) );
             bw.close();
         }
         catch ( Exception ex )
@@ -156,25 +186,6 @@ public class StarCCMExport extends StarMacro
             
             String basePath = ( curDir + File.separatorChar + simName + File.separatorChar );
             
-            // Export all reports
-            /*
-            Collection< Report > reportCollection = simFile.getReportManager().getObjects();
-            if( !reportCollection.isEmpty() )
-            {
-                BufferedWriter reportFile = new BufferedWriter( new FileWriter( resolvePath( basePath + "Reports.csv" ) ) );
-                
-                for( Report thisReport : reportCollection )
-                {
-                    String fieldNames = thisReport.getPresentationName();
-                    Double fieldValue = thisReport.getReportMonitorValue();
-                    String fieldUnits = thisReport.getUnits().toString();
-                    reportFile.append( fieldNames ).append( "," )
-                            .append( fieldValue.toString() ).append( "," )
-                            .append( fieldUnits ).append( System.getProperty( "line.separator" ) );
-                }
-                reportFile.close();
-            }
-            */
             // Export all plots
             Set< String > properties = new HashSet<>();
             
@@ -216,6 +227,25 @@ public class StarCCMExport extends StarMacro
                 new File( paths[0] ).delete();
                 new File( paths[1] ).delete();
             }
+    
+            // Export all reports
+            Collection< Report > reportCollection = simFile.getReportManager().getObjects();
+            if( !reportCollection.isEmpty() )
+            {
+                String fileName = ParseCaseName( simName )[0] + File.separatorChar + ParseCaseName( simName )[1] + ".csv";
+                BufferedWriter reportFile = new BufferedWriter( new FileWriter( resolvePath( fileName ) ) );
+        
+                for( Report thisReport : reportCollection )
+                {
+                    String fieldNames = thisReport.getPresentationName();
+                    Double fieldValue = thisReport.getReportMonitorValue();
+                    String fieldUnits = thisReport.getUnits().toString();
+                    reportFile.append( fieldNames ).append( "," )
+                            .append( fieldValue.toString() ).append( "," )
+                            .append( fieldUnits ).append( System.getProperty( "line.separator" ) );
+                }
+                reportFile.close();
+            }
             
             // Export all scenes
             Collection< Scene > sceneCollection = simFile.getSceneManager().getScenes();
@@ -236,6 +266,12 @@ public class StarCCMExport extends StarMacro
                         simFile.getSceneManager().getSceneByName( curScene );
                         thisScene.printAndWait( resolvePath( foldName + File.separatorChar + fileName ),
                                 magnification, xResolution, yResolution );
+                        
+                        Image src = ImageIO.read( new File( foldName + File.separatorChar + fileName ) );
+                        int x = 90, y = 354, w = 1778, h = 283;
+                        BufferedImage dst = new BufferedImage( w, h, BufferedImage.TYPE_INT_ARGB );
+                        dst.getGraphics().drawImage( src, 0, 0, w, h, x, y, x + w, y + h, null );
+                        ImageIO.write( dst, "png", new File( foldName + File.separatorChar + "_cropped_" + fileName + ".png" ) );
                     }
                 }
             }
